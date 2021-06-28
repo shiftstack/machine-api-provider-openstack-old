@@ -35,10 +35,8 @@ import (
 
 const InstanceStatusAnnotationKey = "instance-status"
 
-type instanceStatus *machinev1.Machine
-
 // Get the status of the instance identified by the given machine
-func (oc *OpenstackClient) instanceStatus(machine *machinev1.Machine) (instanceStatus, error) {
+func (oc *OpenstackClient) instanceStatus(machine *machinev1.Machine) (*machinev1.Machine, error) {
 	currentMachine, err := GetMachineIfExists(oc.client, machine.Namespace, machine.Name)
 
 	if err != nil {
@@ -79,7 +77,6 @@ func GetMachineIfExists(c client.Client, namespace, name string) (*machinev1.Mac
 
 // Sets the status of the instance identified by the given machine to the given machine
 func (oc *OpenstackClient) updateInstanceStatus(machine *machinev1.Machine) error {
-	status := instanceStatus(machine)
 	currentMachine, err := GetMachineIfExists(oc.client, machine.Namespace, machine.Name)
 	if err != nil {
 		return err
@@ -90,7 +87,7 @@ func (oc *OpenstackClient) updateInstanceStatus(machine *machinev1.Machine) erro
 		return fmt.Errorf("Machine has already been deleted. Cannot update current instance status for machine %v", machine.ObjectMeta.Name)
 	}
 
-	m, err := oc.setMachineInstanceStatus(currentMachine, status)
+	m, err := oc.setMachineInstanceStatus(currentMachine, machine)
 	if err != nil {
 		return err
 	}
@@ -99,7 +96,7 @@ func (oc *OpenstackClient) updateInstanceStatus(machine *machinev1.Machine) erro
 }
 
 // Gets the state of the instance stored on the given machine CRD
-func (oc *OpenstackClient) machineInstanceStatus(machine *machinev1.Machine) (instanceStatus, error) {
+func (oc *OpenstackClient) machineInstanceStatus(machine *machinev1.Machine) (*machinev1.Machine, error) {
 	if machine.ObjectMeta.Annotations == nil {
 		// No state
 		return nil, nil
@@ -118,11 +115,11 @@ func (oc *OpenstackClient) machineInstanceStatus(machine *machinev1.Machine) (in
 		return nil, fmt.Errorf("decoding failure: %v", err)
 	}
 
-	return instanceStatus(&status), nil
+	return &status, nil
 }
 
 // Applies the state of an instance onto a given machine CRD
-func (oc *OpenstackClient) setMachineInstanceStatus(machine *machinev1.Machine, status instanceStatus) (*machinev1.Machine, error) {
+func (oc *OpenstackClient) setMachineInstanceStatus(machine *machinev1.Machine, status *machinev1.Machine) (*machinev1.Machine, error) {
 	// Avoid status within status within status ...
 	status.ObjectMeta.Annotations[InstanceStatusAnnotationKey] = ""
 
