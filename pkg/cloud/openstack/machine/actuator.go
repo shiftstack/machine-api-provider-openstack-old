@@ -347,22 +347,7 @@ func (oc *OpenstackClient) Create(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machine) error {
-	instance, err := oc.instanceExists(machine)
-	if err != nil {
-		return err
-	}
-
-	if instance == nil {
-		klog.Infof("Skipped deleting %s that is already deleted.\n", machine.Name)
-		return nil
-	}
 	provider, cloud, err := oc.getProviderClient(machine)
-	if err != nil {
-		return err
-	}
-
-	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
-	osCluster := openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
 	if err != nil {
 		return err
 	}
@@ -373,6 +358,23 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 	if err != nil {
 		return err
 	}
+
+	instance, err := computeService.InstanceExists(machine.Name)
+	if err != nil {
+		return err
+	}
+
+	if instance == nil {
+		klog.Infof("Skipped deleting %s that is already deleted.\n", machine.Name)
+		return nil
+	}
+
+	var clusterSpec openstackconfigv1.OpenstackClusterProviderSpec
+	osCluster := openstackconfigv1.NewOpenStackCluster(clusterSpec, openstackconfigv1.OpenstackClusterProviderStatus{})
+	if err != nil {
+		return err
+	}
+
 	err = computeService.DeleteInstance(&osCluster, machine.Name)
 	if err != nil {
 		return oc.handleMachineError(machine, maoMachine.DeleteMachine(
