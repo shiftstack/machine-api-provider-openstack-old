@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/client-go/tools/record"
 
+	"sigs.k8s.io/cluster-api-provider-openstack/api/v1alpha4"
 	"sigs.k8s.io/cluster-api-provider-openstack/pkg/cloud/services/compute"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
@@ -386,6 +387,24 @@ func (oc *OpenstackClient) Delete(ctx context.Context, machine *machinev1.Machin
 }
 
 func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machine) error {
+	provider, cloud, err := oc.getProviderClient(machine)
+	if err != nil {
+		return err
+	}
+	computeService, err := compute.NewService(provider, &clientconfig.ClientOpts{
+		AuthInfo:   cloud.AuthInfo,
+		RegionName: cloud.RegionName,
+	}, ctrl.Log)
+	if err != nil {
+		return err
+	}
+
+	providerSpec, err := openstackconfigv1.MachineSpecFromProviderSpec(machine.Spec.ProviderSpec)
+	if err != nil {
+		return oc.handleMachineError(machine, maoMachine.InvalidMachineConfiguration(
+			"Cannot unmarshal providerSpec field: %v", err), updateEventAction)
+	}
+
 	if err := oc.validateMachine(machine); err != nil {
 		verr := &maoMachine.MachineError{
 			Reason:  machinev1.UpdateMachineError,
@@ -406,23 +425,14 @@ func (oc *OpenstackClient) Update(ctx context.Context, machine *machinev1.Machin
 
 	currentMachine := (*machinev1.Machine)(status)
 	if currentMachine == nil {
-		instance, err := oc.instanceExists(machine)
+		instance, err := computeService.InstanceExists(machine.Name)
 		if err != nil {
 			return err
 		}
-		if instance != nil && instance.Status == "ACTIVE" {
+		if instance != nil && instance.State == v1alpha4.InstanceStateActive {
 			klog.Infof("Populating current state for boostrap machine %v", machine.ObjectMeta.Name)
 
-			kubeClient := oc.params.KubeClient
-			machineService, err := clients.NewInstanceServiceFromMachine(kubeClient, machine)
-			if err != nil {
-				return err
-			}
-
-			err = machineService.SetMachineLabels(machine, instance.ID)
-			if err != nil {
-				return nil
-			}
+			setMachineLabels(machine, cloud.RegionName, instance.FailureDomain, providerSpec.Flavor)
 
 			return oc.updateAnnotation(machine, instance.ID, clusterInfra.Status.InfrastructureName)
 		} else {
