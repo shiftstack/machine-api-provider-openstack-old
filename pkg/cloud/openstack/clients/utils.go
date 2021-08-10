@@ -92,6 +92,7 @@ func GetProviderClient(cloud clientconfig.Cloud, cert []byte) (*gophercloud.Prov
 				TLSClientConfig: &tls.Config{
 					RootCAs: certPool,
 				},
+				Proxy: http.ProxyFromEnvironment,
 			},
 		}
 		provider.HTTPClient = client
